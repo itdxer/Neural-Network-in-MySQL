@@ -5,7 +5,7 @@ USE nnet;
 CREATE TABLE Dataset (
     RowIndex INT NOT NULL,
     ColumnIndex INT NOT NULL,
-	CellValue DOUBLE(10, 7),
+    CellValue DOUBLE(10, 7),
 
     PRIMARY KEY (RowIndex, ColumnIndex)
 );
@@ -65,7 +65,7 @@ INSERT INTO Dataset VALUES
 
 
 CREATE TABLE DatasetClass (
-	RowIndex INT NOT NULL,
+    RowIndex INT NOT NULL,
     Class INT,
     PRIMARY KEY (RowIndex)
 );
@@ -123,9 +123,9 @@ INSERT INTO DatasetClass VALUES
 (50, 0);
 
 CREATE TABLE Parameters (
-	RowIndex INT NOT NULL,
+    RowIndex INT NOT NULL,
     ColumnIndex INT NOT NULL,
-	Weight DECIMAL(10, 7),
+    Weight DECIMAL(10, 7),
     PRIMARY KEY (RowIndex, ColumnIndex)
 );
 INSERT INTO Parameters VALUES
@@ -135,7 +135,7 @@ INSERT INTO Parameters VALUES
 
 DELIMITER //
 CREATE FUNCTION SIGMOID(x DECIMAL(10, 7))
-	RETURNS DECIMAL(10, 7)
+    RETURNS DECIMAL(10, 7)
     READS SQL DATA
     DETERMINISTIC
     BEGIN
@@ -143,7 +143,7 @@ CREATE FUNCTION SIGMOID(x DECIMAL(10, 7))
     END//
 
 CREATE FUNCTION CLIP(x DECIMAL(10, 7), MinimumValue DECIMAL(10, 7), MaximumValue DECIMAL(10, 7))
-	RETURNS DECIMAL(10, 7)
+    RETURNS DECIMAL(10, 7)
     READS SQL DATA
     DETERMINISTIC
     BEGIN
@@ -151,18 +151,18 @@ CREATE FUNCTION CLIP(x DECIMAL(10, 7), MinimumValue DECIMAL(10, 7), MaximumValue
     END//
 
 CREATE FUNCTION CROSSENTROPY(Target INT, Output DECIMAL(10, 7))
-	RETURNS DECIMAL(10, 7)
+    RETURNS DECIMAL(10, 7)
     READS SQL DATA
     DETERMINISTIC
     BEGIN
         RETURN -(
-			Target * LOG(CLIP(Output, 1e-7, 1 - 1e-7)) +
+            Target * LOG(CLIP(Output, 1e-7, 1 - 1e-7)) +
             (1 - Target) * LOG(CLIP(1 - Output, 1e-7, 1 - 1e-7))
-		);
+        );
     END//
 
 CREATE FUNCTION GRAD_CROSSENTROPY(Target INT, Output DECIMAL(10, 7))
-	RETURNS DECIMAL(20, 7)
+    RETURNS DECIMAL(20, 7)
     READS SQL DATA
     DETERMINISTIC
     BEGIN
@@ -172,43 +172,43 @@ CREATE FUNCTION GRAD_CROSSENTROPY(Target INT, Output DECIMAL(10, 7))
 
 CREATE PROCEDURE TrainNetwork(Epochs INT, Step DECIMAL(10, 7))
 BEGIN
-	DECLARE i INT;
+    DECLARE i INT;
     SET i = 1;
 
     WHILE i <= Epochs DO
         SET i = i + 1;
 
-		UPDATE Parameters
-		LEFT JOIN (
-			SELECT
-				Dataset.ColumnIndex,
-				AVG(R.IncompleteGradient * CellValue) as Gradient
-			FROM(
-				SELECT
-					Result.RowIndex,
-					Result.ColumnIndex,
+        UPDATE Parameters
+        LEFT JOIN (
+            SELECT
+                Dataset.ColumnIndex,
+                AVG(R.IncompleteGradient * CellValue) as Gradient
+            FROM(
+                SELECT
+                    Result.RowIndex,
+                    Result.ColumnIndex,
                     -- Cannot compute full gradient, because we need to make a dot
                     -- product procedure which involves grouping operartion with
                     -- the dataset table.
-					GRAD_CROSSENTROPY(DatasetClass.Class, Output) * Output * (1 - Output) as IncompleteGradient
-				FROM (
-					-- Compute output from the network
-					SELECT
-						Dataset.RowIndex,
-						Parameters.ColumnIndex,
-						SIGMOID(SUM(Weight * CellValue)) as Output
-					FROM Dataset
-					CROSS JOIN Parameters ON Dataset.ColumnIndex = Parameters.RowIndex
-					GROUP BY Dataset.RowIndex, Parameters.ColumnIndex
-				) as Result
-				LEFT JOIN DatasetClass
-				ON DatasetClass.RowIndex = Result.RowIndex
-			) as R
-			CROSS JOIN Dataset ON Dataset.RowIndex = R.RowIndex
-			GROUP BY R.ColumnIndex, Dataset.ColumnIndex
-		) as Updates
-		ON Updates.ColumnIndex = Parameters.RowIndex
-		SET Weight = Weight - Step * Updates.Gradient;
+                    GRAD_CROSSENTROPY(DatasetClass.Class, Output) * Output * (1 - Output) as IncompleteGradient
+                FROM (
+                    -- Compute output from the network
+                    SELECT
+                        Dataset.RowIndex,
+                        Parameters.ColumnIndex,
+                        SIGMOID(SUM(Weight * CellValue)) as Output
+                    FROM Dataset
+                    CROSS JOIN Parameters ON Dataset.ColumnIndex = Parameters.RowIndex
+                    GROUP BY Dataset.RowIndex, Parameters.ColumnIndex
+                ) as Result
+                LEFT JOIN DatasetClass
+                ON DatasetClass.RowIndex = Result.RowIndex
+            ) as R
+            CROSS JOIN Dataset ON Dataset.RowIndex = R.RowIndex
+            GROUP BY R.ColumnIndex, Dataset.ColumnIndex
+        ) as Updates
+        ON Updates.ColumnIndex = Parameters.RowIndex
+        SET Weight = Weight - Step * Updates.Gradient;
     END WHILE;
 END//
 DELIMITER ;
@@ -217,15 +217,15 @@ CALL TrainNetwork(7000, 0.01);
 
 -- Check the prediction accuracy score
 SELECT
-	AVG(CAST(Class AS UNSIGNED) = ROUND(Result.Output)) as Accuracy
+    AVG(CAST(Class AS UNSIGNED) = ROUND(Result.Output)) as Accuracy
 FROM (
-	SELECT
-		Dataset.RowIndex,
+    SELECT
+        Dataset.RowIndex,
         SIGMOID(SUM(Weight * CellValue)) as Output
-	FROM Dataset
-	CROSS JOIN Parameters
-		ON Dataset.ColumnIndex = Parameters.RowIndex
-	GROUP BY Dataset.RowIndex, Parameters.ColumnIndex
+    FROM Dataset
+    CROSS JOIN Parameters
+        ON Dataset.ColumnIndex = Parameters.RowIndex
+    GROUP BY Dataset.RowIndex, Parameters.ColumnIndex
 ) as Result
 LEFT JOIN DatasetClass
 ON DatasetClass.RowIndex = Result.RowIndex;
